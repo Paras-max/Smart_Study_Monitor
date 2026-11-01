@@ -76,7 +76,7 @@ PHONE_DETECTOR = {
 
 # UI & Color Schemes (BGR format for OpenCV)
 UI = {
-    "WINDOW_NAME": "Smart Study Monitor - Phase 2",
+    "WINDOW_NAME": "Smart Study Monitor - Phase 3",
     "COLOR_GREEN": (0, 255, 0),
     "COLOR_RED": (0, 0, 255),
     "COLOR_ORANGE": (0, 140, 255),
@@ -86,4 +86,23 @@ UI = {
     "COLOR_DARK_GRAY": (20, 20, 20),
     "COLOR_ALERT_BG": (0, 0, 150),
     "FPS_SMOOTHING_FRAMES": 30,
+}
+
+# Audio Alerts Configuration (Phase 3)
+AUDIO_ALERTS = {
+    "ENABLED": True,
+    "AUDIO_DIR": BASE_DIR / "assets" / "audio",
+    "CLIPS": {
+        "FACE_HIDDEN": BASE_DIR / "assets" / "audio" / "face_hidden_alert.mp3",
+        "DROWSY": BASE_DIR / "assets" / "audio" / "sleeping_alert.mp3",
+        "PHONE_DETECTED": BASE_DIR / "assets" / "audio" / "phone_detected_alert.mp3",
+    },
+    # Grace period (seconds) before triggering face hidden alert
+    "FACE_HIDDEN_GRACE_PERIOD_SEC": 3.0,
+    # Cooldown timers (seconds) to prevent alert spam
+    "FACE_HIDDEN_COOLDOWN_SEC": 15.0,
+    "SLEEPING_COOLDOWN_SEC": 15.0,
+    "PHONE_COOLDOWN_SEC": 20.0,
+    # Continuous absence duration (seconds) required to reset phone detection
+    "PHONE_ABSENCE_RESET_SEC": 3.0,
 }

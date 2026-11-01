@@ -1,12 +1,13 @@
 """
-Smart Study Monitor - Phase 2: Main Application
+Smart Study Monitor - Phase 3: Main Application
 ================================================
 Integrates:
 1. OpenCV Webcam Video Pipeline with horizontal mirroring.
 2. MediaPipe Face Mesh for facial landmarks & presence monitoring.
 3. Eye Aspect Ratio (EAR) drowsiness detector ("Wake Up & Study!").
 4. Ultralytics YOLOv8 for cell phone distraction detection ("Put the Phone Away!").
-5. Real-time smoothed FPS and clean resource cleanup.
+5. Intelligent Audio Alert Manager with 3 original voice alerts & priority queueing.
+6. Real-time smoothed FPS and clean resource cleanup.
 
 Controls:
     Press 'Q' or 'q' in the video window to quit cleanly.
@@ -20,6 +21,7 @@ import cv2
 import mediapipe as mp
 
 import config
+from modules.audio_alert_manager import AudioAlertManager
 from modules.eye_monitor import EyeMonitor
 from modules.phone_detector import PhoneDetector
 
@@ -127,7 +129,6 @@ def initialize_webcam():
     for idx in candidate_indices:
         print(f"[INFO] Checking camera index {idx}...")
         for b_name, b_api in backends:
-            cap = None
             try:
                 cap = cv2.VideoCapture(idx, b_api)
                 if cap.isOpened():
@@ -138,27 +139,27 @@ def initialize_webcam():
                         return cap, idx
                     else:
                         print(f"[DEBUG] Camera index {idx} ({b_name}) opened but returned no frame (ret={ret}).")
+                        cap.release()
                 else:
                     print(f"[DEBUG] Camera index {idx} ({b_name}) failed to open.")
+                    cap.release()
             except Exception as e:
                 print(f"[DEBUG] Exception testing index {idx} ({b_name}): {e}")
-            finally:
-                if cap is not None:
-                    cap.release()
 
     return None, None
 
 
 def run_monitor():
-    """Main application loop coordinating Face Mesh, Eye Monitor, and YOLO Phone Detector."""
+    """Main application loop coordinating Face Mesh, Eye Monitor, YOLO Phone Detector, and Audio Alerts."""
     print("=" * 65)
-    print("   AI Smart Study Monitor - Phase 2 (Face + Eyes + Phone)")
+    print("   AI Smart Study Monitor - Phase 3 (Face + Eyes + Phone + Audio)")
     print("=" * 65)
 
     cap = None
     face_mesh = None
     phone_detector = None
     eye_monitor = None
+    audio_alert_manager = None
     window_name = config.UI["WINDOW_NAME"]
 
     try:
@@ -192,8 +193,14 @@ def run_monitor():
             target_class_id=config.PHONE_DETECTOR["TARGET_CLASS_ID"],
             inference_interval=config.PHONE_DETECTOR["INFERENCE_INTERVAL_FRAMES"],
         )
+        print("[SUCCESS] YOLO Phone Detector initialized.")
 
-        # 4. Initialize Webcam
+        # 4. Initialize Audio Alert Manager (Phase 3)
+        print("[INFO] Initializing Audio Alert Manager (Phase 3)...")
+        audio_alert_manager = AudioAlertManager()
+        print("[SUCCESS] Audio Alert Manager initialized.")
+
+        # 5. Initialize Webcam
         cap, active_cam_idx = initialize_webcam()
         if cap is None:
             print("\n" + "!" * 65)
@@ -269,28 +276,28 @@ def run_monitor():
             if phone_results["phone_detected"]:
                 phone_detector.draw_detections(frame, phone_results["boxes"])
 
-            # --- STATUS PRIORITY SYSTEM ---
-            # Priority 1: Face Missing (Highest)
-            # Priority 2: Phone Detected
-            # Priority 3: Drowsy / Eyes Closed
-            # Priority 4: Normal Focused Study
+            # --- MODULE 4: Audio Alert Manager & Priority Evaluation ---
+            now_mono = time.monotonic()
+            status_category, last_alert_name = audio_alert_manager.update(
+                face_detected=is_face_detected,
+                is_drowsy=eye_results["is_drowsy"],
+                phone_detected=phone_results["phone_detected"],
+                current_time=now_mono,
+            )
+
+            # --- STATUS PRIORITY SYSTEM (Visual Badges & Borders) ---
+            # Priority 1: Face Hidden (Highest Priority)
+            # Priority 2: Sleeping / Drowsiness
+            # Priority 3: Phone Detected
+            # Priority 4: Focused Study
             if not is_face_detected:
-                primary_status = "WARNING: Face Not Detected!"
+                primary_status = "WARNING: Face Not Visible!"
                 sub_status = "Keep Your Face Visible"
                 badge_bg = (20, 20, 60)
                 badge_color = config.UI["COLOR_RED"]
 
                 # Red border around frame
                 cv2.rectangle(frame, (0, 0), (frame_width - 1, frame_height - 1), config.UI["COLOR_RED"], 6)
-
-            elif phone_results["phone_detected"]:
-                primary_status = "WARNING: Put the Phone Away!"
-                sub_status = "Stay Focused on Your Study"
-                badge_bg = (20, 20, 60)
-                badge_color = config.UI["COLOR_RED"]
-
-                # Orange-red warning border
-                cv2.rectangle(frame, (0, 0), (frame_width - 1, frame_height - 1), config.UI["COLOR_ORANGE"], 6)
 
             elif eye_results["is_drowsy"]:
                 primary_status = "WARNING: Wake Up & Study!"
@@ -301,34 +308,46 @@ def run_monitor():
                 # Yellow warning border
                 cv2.rectangle(frame, (0, 0), (frame_width - 1, frame_height - 1), config.UI["COLOR_YELLOW"], 6)
 
+            elif phone_results["phone_detected"]:
+                primary_status = "WARNING: Put the Phone Away!"
+                sub_status = "Stay Focused on Your Study"
+                badge_bg = (20, 20, 60)
+                badge_color = config.UI["COLOR_ORANGE"]
+
+                # Orange warning border
+                cv2.rectangle(frame, (0, 0), (frame_width - 1, frame_height - 1), config.UI["COLOR_ORANGE"], 6)
+
             else:
                 primary_status = "STATUS: Focused & Studying"
                 sub_status = "Face Detected & Attentive"
                 badge_bg = (20, 50, 20)
                 badge_color = config.UI["COLOR_GREEN"]
 
-            # Format live HUD metrics
-            face_metric = "Detected" if is_face_detected else "Missing"
-            
-            if is_face_detected:
-                if eye_results["are_eyes_closed"]:
-                    eye_metric = f"Closed ({eye_results['closed_duration']:.1f}s) [EAR: {eye_results['avg_ear']:.2f}]"
-                else:
-                    eye_metric = f"Open [EAR: {eye_results['avg_ear']:.2f}]"
-            else:
-                eye_metric = "N/A (No Face)"
+            # Format live HUD metrics strictly per Phase 3 specifications:
+            # - FACE: VISIBLE / NOT VISIBLE
+            # - EYES: OPEN / CLOSED / DROWSY
+            # - PHONE: DETECTED / NOT DETECTED
+            # - STATUS: FOCUSED / DISTRACTED / SLEEPING
+            # - LAST ALERT: Alert name
+            face_metric = "VISIBLE" if is_face_detected else "NOT VISIBLE"
 
-            if phone_results["phone_detected"]:
-                phone_metric = f"DETECTED ({len(phone_results['boxes'])} found)"
-            elif not phone_results["inference_success"]:
-                phone_metric = "Detector Offline"
+            if not is_face_detected:
+                eye_metric = "NOT VISIBLE"
+            elif eye_results["is_drowsy"]:
+                eye_metric = f"DROWSY ({eye_results['closed_duration']:.1f}s)"
+            elif eye_results["are_eyes_closed"]:
+                eye_metric = f"CLOSED ({eye_results['closed_duration']:.1f}s)"
             else:
-                phone_metric = "No Phone Detected"
+                eye_metric = f"OPEN (EAR {eye_results['avg_ear']:.2f})"
+
+            phone_metric = "DETECTED" if phone_results["phone_detected"] else "NOT DETECTED"
 
             hud_metrics = [
-                ("Face Status", face_metric),
-                ("Eye Ratio", eye_metric),
-                ("Phone Status", phone_metric),
+                ("FACE", face_metric),
+                ("EYES", eye_metric),
+                ("PHONE", phone_metric),
+                ("STATUS", status_category),
+                ("LAST ALERT", last_alert_name),
             ]
 
             # --- UI RENDERING ---
@@ -412,6 +431,9 @@ def run_monitor():
             print("[INFO] Webcam released.")
         cv2.destroyAllWindows()
         print("[INFO] OpenCV windows closed.")
+        if audio_alert_manager is not None:
+            audio_alert_manager.cleanup()
+            print("[INFO] Audio Alert Manager released.")
         if face_mesh is not None:
             face_mesh.close()
             print("[INFO] MediaPipe Face Mesh closed.")

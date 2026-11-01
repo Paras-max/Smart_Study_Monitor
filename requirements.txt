@@ -1,8 +1,9 @@
-# Smart Study Monitor - Phase 2 Dependencies
+# Smart Study Monitor - Phase 3 Dependencies
 # Pinned for Python 3.11 compatibility on Windows 10/11
 opencv-python==4.10.0.84
 mediapipe==0.10.14
 ultralytics>=8.3.0
 torch>=2.0.0
 torchvision>=0.15.0
+pygame>=2.6.0
 pytest>=8.0.0

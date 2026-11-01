@@ -17,7 +17,7 @@ import cv2
 import numpy as np
 
 
-def test_backend(backend_name: str, backend_api: int, display_duration: float = 10.0) -> bool:
+def verify_backend(backend_name: str, backend_api: int, display_duration: float = 10.0) -> bool:
     """
     Tests opening camera index 0 with a specific OpenCV backend.
     
@@ -61,49 +61,51 @@ def test_backend(backend_name: str, backend_api: int, display_duration: float = 
             print(f"  * Read elapsed time  : {t_read:.3f} seconds")
             frame_captured = True
 
-            # Requirement 5: Display live camera feed for up to 10 seconds
-            window_name = f"Webcam Live Preview - {backend_name} (Press 'Q' to Exit)"
-            print(f"\n  [INFO] Displaying live preview for up to {display_duration:.0f} seconds...")
-            print("  [INFO] Click the window and press 'Q' to exit early.")
+            # Display live camera feed if display_duration > 0
+            if display_duration > 0:
+                window_name = f"Webcam Live Preview - {backend_name} (Press 'Q' to Exit)"
+                print(f"\n  [INFO] Displaying live preview for up to {display_duration:.0f} seconds...")
+                print("  [INFO] Click the window and press 'Q' to exit early.")
 
-            start_display = time.time()
-            while time.time() - start_display < display_duration:
-                # Capture subsequent frames for live video demonstration
-                loop_ret, loop_frame = cap.read()
-                if not loop_ret or loop_frame is None:
-                    break
+                start_display = time.time()
+                try:
+                    while time.time() - start_display < display_duration:
+                        loop_ret, loop_frame = cap.read()
+                        if not loop_ret or loop_frame is None:
+                            break
 
-                # Add timestamp and time remaining text
-                time_left = max(0.0, display_duration - (time.time() - start_display))
-                cv2.putText(
-                    loop_frame,
-                    f"Backend: {backend_name} | Closing in: {time_left:.1f}s",
-                    (20, 40),
-                    cv2.FONT_HERSHEY_SIMPLEX,
-                    0.7,
-                    (0, 255, 0),
-                    2,
-                    cv2.LINE_AA,
-                )
-                cv2.putText(
-                    loop_frame,
-                    "Press 'Q' to close window",
-                    (20, loop_frame.shape[0] - 20),
-                    cv2.FONT_HERSHEY_SIMPLEX,
-                    0.6,
-                    (220, 220, 220),
-                    1,
-                    cv2.LINE_AA,
-                )
+                        time_left = max(0.0, display_duration - (time.time() - start_display))
+                        cv2.putText(
+                            loop_frame,
+                            f"Backend: {backend_name} | Closing in: {time_left:.1f}s",
+                            (20, 40),
+                            cv2.FONT_HERSHEY_SIMPLEX,
+                            0.7,
+                            (0, 255, 0),
+                            2,
+                            cv2.LINE_AA,
+                        )
+                        cv2.putText(
+                            loop_frame,
+                            "Press 'Q' to close window",
+                            (20, loop_frame.shape[0] - 20),
+                            cv2.FONT_HERSHEY_SIMPLEX,
+                            0.6,
+                            (220, 220, 220),
+                            1,
+                            cv2.LINE_AA,
+                        )
 
-                cv2.imshow(window_name, loop_frame)
-                key = cv2.waitKey(30) & 0xFF
-                if key == ord("q") or key == ord("Q"):
-                    print("  [INFO] 'Q' pressed by user. Closing preview window.")
-                    break
+                        cv2.imshow(window_name, loop_frame)
+                        key = cv2.waitKey(30) & 0xFF
+                        if key == ord("q") or key == ord("Q"):
+                            print("  [INFO] 'Q' pressed by user. Closing preview window.")
+                            break
 
-            cv2.destroyWindow(window_name)
-            print(f"  [INFO] Preview window closed.")
+                    cv2.destroyWindow(window_name)
+                    print("  [INFO] Preview window closed.")
+                except cv2.error as gui_err:
+                    print(f"  [WARN] GUI display not available in current OpenCV build: {gui_err}")
         else:
             print(f"  * Frame read status  : FAILED (ret={ret}, frame={'None' if frame is None else 'empty'})")
             print(f"  * Read elapsed time  : {t_read:.3f} seconds")
@@ -111,17 +113,20 @@ def test_backend(backend_name: str, backend_api: int, display_duration: float = 
     except Exception as e:
         print(f"  * Exception caught   : {e}")
     finally:
-        # Requirement 6: Properly release camera and windows after every test
+        # Properly release camera and windows after every test
         if cap is not None:
             cap.release()
             print(f"  * Camera release     : Resource released cleanly.")
-        cv2.destroyAllWindows()
+        try:
+            cv2.destroyAllWindows()
+        except cv2.error:
+            pass
 
     print()
     return frame_captured
 
 
-def run_diagnostics():
+def run_diagnostics(display_duration: float = 10.0):
     print("=" * 65)
     print("  STANDALONE HP WEBCAM DIAGNOSTIC SUITE (CAMERA INDEX 0 ONLY)")
     print("=" * 65)
@@ -138,7 +143,7 @@ def run_diagnostics():
     results = {}
 
     for name, api in backends:
-        success = test_backend(name, api, display_duration=10.0)
+        success = verify_backend(name, api, display_duration=display_duration)
         results[name] = success
         # Brief pause between backend switches to allow Windows driver detachment
         time.sleep(0.5)
@@ -163,4 +168,10 @@ def run_diagnostics():
 
 
 if __name__ == "__main__":
-    run_diagnostics()
+    duration = 10.0
+    if "--quick" in sys.argv:
+        duration = 1.0
+    elif "--no-preview" in sys.argv:
+        duration = 0.0
+    run_diagnostics(display_duration=duration)
+
